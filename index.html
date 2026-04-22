@@ -1,0 +1,642 @@
+<!--
+================================================================================
+  App:          LaGuardia Navigate Journeys Analyzer
+  Version:      1.0
+  Released:     April 22, 2026
+  Developed by: Josh Goldblatt using Claude
+================================================================================
+  CHANGELOG (most recent first)
+--------------------------------------------------------------------------------
+  v1.0  2026-04-22
+    - Initial release under app-development conventions.
+    - Upload a Navigate Journeys report CSV via drag-and-drop or file picker.
+    - Displays per-journey stats (step counts, student counts, etc.).
+    - Flattens the Journeys report and offers it as a CSV download.
+    - Client-side only — CSV parsing handled in the browser via PapaParse; no
+      data leaves the user's machine.
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LaGuardia Navigate Journeys Analyzer v1.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --blue: #378ADD;
+    --blue-dark: #185FA5;
+    --blue-light: #E6F1FB;
+    --blue-mid: #85B7EB;
+    --teal: #0F6E56;
+    --teal-light: #E1F5EE;
+    --teal-mid: #5DCAA5;
+    --gray-bg: #F7F6F2;
+    --gray-border: rgba(0,0,0,0.1);
+    --gray-text: #888780;
+    --text: #1a1a1a;
+    --text-secondary: #5F5E5A;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Georgia', serif;
+    background: #F4F2EC;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+
+  .page-wrap {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid var(--gray-border);
+    padding-bottom: 1.5rem;
+  }
+
+  header h1 {
+    font-size: 1.75rem;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  header p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 0.35rem;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+  }
+
+  .app-info {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--gray-bg);
+    border-left: 3px solid var(--blue-mid);
+    border-radius: var(--radius-sm);
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+
+  .app-info span {
+    color: var(--text);
+  }
+
+  #drop-zone {
+    background: white;
+    border: 1.5px dashed #C0BDB4;
+    border-radius: var(--radius);
+    padding: 2.5rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    margin-bottom: 2rem;
+  }
+
+  #drop-zone:hover, #drop-zone.hover {
+    border-color: var(--blue);
+    background: var(--blue-light);
+  }
+
+  #drop-zone input { display: none; }
+
+  .upload-arrow {
+    width: 36px; height: 36px;
+    background: var(--blue-light);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px;
+    font-size: 18px;
+    color: var(--blue-dark);
+  }
+
+  .upload-label {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .upload-label span {
+    color: var(--blue-dark);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  #file-name {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 12px;
+    color: #B4B2A9;
+    margin-top: 8px;
+  }
+
+  #results { display: none; }
+
+  .journey-block {
+    background: white;
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-border);
+    margin-bottom: 2rem;
+    overflow: hidden;
+  }
+
+  .journey-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--gray-border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .journey-accent {
+    width: 4px;
+    height: 28px;
+    background: var(--blue);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .journey-title {
+    font-size: 1rem;
+    font-weight: normal;
+    letter-spacing: -0.01em;
+  }
+
+  .metric-row {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--gray-border);
+  }
+
+  .metric-card {
+    flex: 1;
+    padding: 1rem 1.25rem;
+    border-right: 1px solid var(--gray-border);
+  }
+
+  .metric-card:last-child { border-right: none; }
+
+  .metric-label {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-size: 1.6rem;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .metric-pct {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+  }
+
+  .metric-value.complete { color: var(--teal); }
+  .metric-pct.complete { color: var(--teal); }
+
+  .scorecard {
+    display: flex;
+    gap: 0;
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid var(--gray-border);
+    background: #FAFAF7;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+  }
+  .scorecard-label {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+  .scorecard-items { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+  .scorecard-item { display: flex; align-items: baseline; gap: 6px; }
+  .scorecard-num {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .scorecard-num.student { color: var(--teal); }
+  .scorecard-num.staff { color: var(--blue-dark); }
+  .scorecard-desc {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .scorecard-divider {
+    width: 1px; height: 18px;
+    background: var(--gray-border);
+    flex-shrink: 0;
+  }
+
+  .steps-section { padding: 1.25rem; }
+
+  .steps-label {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+  }
+
+  table.steps {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 13px;
+  }
+
+  table.steps th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--gray-border);
+    background: #FAFAF7;
+  }
+
+  table.steps th.num { text-align: right; }
+
+  table.steps td {
+    padding: 9px 10px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    vertical-align: top;
+  }
+
+  table.steps tr:last-child td { border-bottom: none; }
+
+  table.steps td.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .step-name {
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 5px;
+  }
+
+  .status-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+
+  .pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 0.5px solid var(--gray-border);
+    background: var(--gray-bg);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .pill.complete {
+    background: var(--teal-light);
+    color: var(--teal);
+    border-color: var(--teal-mid);
+  }
+
+  .pill.in-progress {
+    background: var(--blue-light);
+    color: var(--blue-dark);
+    border-color: var(--blue-mid);
+  }
+
+  .self-val {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--teal);
+  }
+
+  .self-pct {
+    font-size: 11px;
+    color: var(--teal);
+    margin-top: 2px;
+  }
+
+  .self-zero { color: #C0BDB4; font-size: 13px; }
+
+  #download-btn {
+    display: none;
+    padding: 10px 22px;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--blue);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    margin-bottom: 2rem;
+    letter-spacing: 0.01em;
+    transition: background 0.15s;
+  }
+
+  #download-btn:hover { background: var(--blue-dark); }
+
+  .error-msg {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 13px;
+    color: #A32D2D;
+    background: #FCEBEB;
+    border: 0.5px solid #F09595;
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 1rem;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <header>
+    <h1>Navigate Journeys Analyzer</h1>
+    <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
+    <div class="app-info">
+      <span>App:</span> LaGuardia Navigate Journeys Analyzer<br>
+      <span>Version:</span> 1.0<br>
+      <span>Released:</span> April 22, 2026<br>
+      <span>Developed by:</span> Josh Goldblatt using Claude
+    </div>
+  </header>
+
+  <div id="drop-zone"
+    onclick="document.getElementById('file-input').click()"
+    ondragover="handleDragOver(event)"
+    ondragleave="handleDragLeave(event)"
+    ondrop="handleDrop(event)">
+    <div class="upload-arrow">&#8681;</div>
+    <div class="upload-label">Drop your CSV here, or <span>browse</span></div>
+    <div id="file-name">No file selected</div>
+    <input type="file" id="file-input" accept=".csv" onchange="handleFile(this.files[0])">
+  </div>
+
+  <div class="error-msg" id="error-msg"></div>
+
+  <div id="results">
+    <button id="download-btn" onclick="downloadFlat()">&#8595; Download flat file</button>
+    <div id="stats-container"></div>
+  </div>
+
+</div>
+
+<script>
+  let parsedData = [];
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.add('hover');
+  }
+  function handleDragLeave() {
+    document.getElementById('drop-zone').classList.remove('hover');
+  }
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.remove('hover');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    if (!file.name.endsWith('.csv')) {
+      showError('Please upload a .csv file.');
+      return;
+    }
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('error-msg').style.display = 'none';
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        if (!results.data.length) { showError('The file appears to be empty.'); return; }
+        if (!results.data[0]['Journey Name']) { showError('This doesn\'t look like a Journeys report — "Journey Name" column not found.'); return; }
+        parsedData = results.data;
+        renderStats(parsedData);
+      },
+      error: function() { showError('Could not parse the file. Please check it\'s a valid CSV.'); }
+    });
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function pct(num, denom) {
+    if (!denom) return '0%';
+    if (num === 0) return '0%';
+    const val = (num / denom) * 100;
+    const rounded = Math.round(val);
+    if (rounded === 0) return val.toFixed(1) + '%';
+    return rounded + '%';
+  }
+
+  function renderStats(data) {
+    const journeys = [...new Set(data.map(r => r['Journey Name']))].filter(Boolean).sort();
+    const container = document.getElementById('stats-container');
+    container.innerHTML = '';
+
+    journeys.forEach(journey => {
+      const rows = data.filter(r => r['Journey Name'] === journey);
+
+      // Dedupe to one row per student for top-level metrics
+      const studentMap = {};
+      rows.forEach(r => {
+        const id = r['Student ID'];
+        if (id && !studentMap[id]) studentMap[id] = r;
+      });
+      const uniqueStudents = Object.values(studentMap);
+      const assigned = uniqueStudents.length;
+      const complete = uniqueStudents.filter(r =>
+        (r['Journey Status'] || '').trim().toLowerCase() === 'complete'
+      ).length;
+
+      const steps = [...new Set(rows.map(r => r['Journey Step Name']))].filter(Boolean);
+
+      // Count students who completed at least 1 step
+      const studentsWithAnyComplete = new Set();
+      rows.forEach(r => {
+        if ((r['Journey Step Status'] || '').trim().toLowerCase() === 'complete') {
+          studentsWithAnyComplete.add(r['Student ID']);
+        }
+      });
+      const anyStepComplete = studentsWithAnyComplete.size;
+
+      // Journey-level step completion scorecard
+      let totalStepsCompleted = 0;
+      let totalStepsByStudent = 0;
+      let totalStepsByStaff = 0;
+      rows.forEach(r => {
+        const status = (r['Journey Step Status'] || '').trim().toLowerCase();
+        if (status === 'complete') {
+          totalStepsCompleted++;
+          const completedBy = (r['Journey Step Status Completed By Name'] || '').trim().toLowerCase();
+          const studentName = (r['Student Name'] || '').trim().toLowerCase();
+          if (completedBy && studentName && completedBy === studentName) {
+            totalStepsByStudent++;
+          } else if (completedBy) {
+            totalStepsByStaff++;
+          }
+        }
+      });
+
+      let stepsHTML = '';
+      steps.forEach(step => {
+        const stepRows = rows.filter(r => r['Journey Step Name'] === step);
+        const total = stepRows.length;
+        const statusCounts = {};
+        let selfComplete = 0;
+        let totalComplete = 0;
+
+        stepRows.forEach(r => {
+          const status = (r['Journey Step Status'] || 'Unknown').trim();
+          statusCounts[status] = (statusCounts[status] || 0) + 1;
+          if (status.toLowerCase() === 'complete') {
+            totalComplete++;
+            const completedBy = (r['Journey Step Status Completed By Name'] || '').trim().toLowerCase();
+            const studentName = (r['Student Name'] || '').trim().toLowerCase();
+            if (completedBy && studentName && completedBy === studentName) selfComplete++;
+          }
+        });
+
+        const pillsHTML = Object.entries(statusCounts).map(([s, c]) => {
+          const lc = s.toLowerCase();
+          const cls = lc === 'complete' ? 'complete' : lc.includes('progress') ? 'in-progress' : '';
+          return `<span class="pill ${cls}">${s}: ${c} (${pct(c, total)})</span>`;
+        }).join('');
+
+        const selfHTML = selfComplete > 0
+          ? `<div class="self-val">${selfComplete}</div><div class="self-pct">${pct(selfComplete, totalComplete)} of completed</div>`
+          : `<span class="self-zero">—</span>`;
+
+        stepsHTML += `
+          <tr>
+            <td>
+              <div class="step-name">${step}</div>
+              <div class="status-pills">${pillsHTML}</div>
+            </td>
+            <td class="num">${selfHTML}</td>
+          </tr>`;
+      });
+
+      const block = document.createElement('div');
+      block.className = 'journey-block';
+      block.innerHTML = `
+        <div class="journey-header">
+          <div class="journey-accent"></div>
+          <div class="journey-title">${journey}</div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="metric-label">Assigned</div>
+            <div class="metric-value">${assigned}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">At least 1 step complete</div>
+            <div class="metric-value">${anyStepComplete}</div>
+            <div class="metric-pct">${pct(anyStepComplete, assigned)} of assigned</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Journey complete</div>
+            <div class="metric-value complete">${complete}</div>
+            <div class="metric-pct complete">${pct(complete, assigned)} of assigned</div>
+          </div>
+        </div>
+        <div class="scorecard">
+          <span class="scorecard-label">Steps completed</span>
+          <div class="scorecard-items">
+            <div class="scorecard-item">
+              <span class="scorecard-num">${totalStepsCompleted}</span>
+              <span class="scorecard-desc">total</span>
+            </div>
+            <div class="scorecard-divider"></div>
+            <div class="scorecard-item">
+              <span class="scorecard-num student">${totalStepsByStudent}</span>
+              <span class="scorecard-desc">by student (${pct(totalStepsByStudent, totalStepsCompleted)})</span>
+            </div>
+            <div class="scorecard-divider"></div>
+            <div class="scorecard-item">
+              <span class="scorecard-num staff">${totalStepsByStaff}</span>
+              <span class="scorecard-desc">by staff (${pct(totalStepsByStaff, totalStepsCompleted)})</span>
+            </div>
+          </div>
+        </div>
+        <div class="steps-section">
+          <div class="steps-label">Journey steps</div>
+          <table class="steps">
+            <thead>
+              <tr>
+                <th>Step name &amp; status breakdown</th>
+                <th class="num">Completed by student</th>
+              </tr>
+            </thead>
+            <tbody>${stepsHTML}</tbody>
+          </table>
+        </div>`;
+
+      container.appendChild(block);
+    });
+
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('download-btn').style.display = 'inline-block';
+  }
+
+  function downloadFlat() {
+    const stepCols = [
+      'Journey Step Name', 'Journey Step Status',
+      'Journey Step Status Completed By Name', 'Journey Step Status Completed By ID',
+      'Journey Step Status Completed By Email', 'Journey Step Status Completion Date',
+      'Journey Step Status Completion Time'
+    ];
+    if (!parsedData.length) return;
+    const allCols = Object.keys(parsedData[0]);
+    const keepCols = allCols.filter(c => !stepCols.includes(c));
+    const seen = new Set();
+    const flat = [];
+    parsedData.forEach(row => {
+      const key = (row['Student ID'] || '') + '||' + (row['Journey Name'] || '');
+      if (!seen.has(key)) {
+        seen.add(key);
+        const newRow = {};
+        keepCols.forEach(c => { newRow[c] = row[c]; });
+        flat.push(newRow);
+      }
+    });
+    const csv = Papa.unparse(flat);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'journeys_report_flat.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+</body>
+</html>
