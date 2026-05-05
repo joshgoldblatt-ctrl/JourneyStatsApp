@@ -1,12 +1,28 @@
 <!--
 ================================================================================
   App:          LaGuardia Navigate Journeys Analyzer
-  Version:      1.5
+  Version:      1.7
   Released:     May 5, 2026
   Developed by: Josh Goldblatt using Claude
 ================================================================================
   CHANGELOG (most recent first)
 --------------------------------------------------------------------------------
+  v1.7  2026-05-05
+    - Added a Total row at the bottom of the overview table. Each numeric
+      column sums down the rows; the two student-count columns also show a
+      recomputed percentage against the total assigned. Total row is styled
+      with a tinted background and bold text to set it apart.
+    - Note: totals are sums across journeys, not unique-student counts. A
+      student assigned to two journeys is counted twice in the Assigned
+      total. This matches what users expect from a column total but is
+      worth knowing if the totals are ever interpreted as headcount.
+  v1.6  2026-05-05
+    - Renamed two metric labels for clarity, applied in both the overview
+      table and the per-journey cards: "At least 1 step complete" → "Students
+      with at least 1 step complete"; "Journey complete" → "Students with
+      journey complete." Both columns count unique students (deduped), and
+      the new labels make that explicit so they don't get confused with the
+      raw step-event counts in the same view.
   v1.5  2026-05-05
     - Added a multi-journey overview table that appears at the top of results
       when the uploaded file contains more than one journey. One row per
@@ -33,7 +49,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LaGuardia Navigate Journeys Analyzer v1.5</title>
+<title>LaGuardia Navigate Journeys Analyzer v1.7</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -273,6 +289,13 @@
 
   table.overview tr:last-child td { border-bottom: none; }
 
+  table.overview tr.total-row td {
+    background: #FAFAF7;
+    font-weight: 600;
+    border-top: 1.5px solid var(--gray-border);
+    border-bottom: none;
+  }
+
   table.overview td.num {
     text-align: right;
     white-space: nowrap;
@@ -463,7 +486,7 @@
     <h1>Navigate Journeys Analyzer App</h1>
     <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
     <div class="app-info">
-      <span>Version:</span> 1.5<br>
+      <span>Version:</span> 1.7<br>
       <span>Released:</span> May 5, 2026<br>
       <span>Developed by:</span> Josh Goldblatt using Claude
     </div>
@@ -645,12 +668,12 @@
             <div class="metric-value">${assigned}</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">At least 1 step complete</div>
+            <div class="metric-label">Students with at least 1 step complete</div>
             <div class="metric-value">${anyStepComplete}</div>
             <div class="metric-pct">${pct(anyStepComplete, assigned)} of assigned</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Journey complete</div>
+            <div class="metric-label">Students with journey complete</div>
             <div class="metric-value complete">${complete}</div>
             <div class="metric-pct complete">${pct(complete, assigned)} of assigned</div>
           </div>
@@ -719,6 +742,29 @@
         </tr>
       `).join('');
 
+      // Column totals (sums across journeys; same student counted once per journey)
+      const totals = overviewRows.reduce((acc, r) => ({
+        assigned: acc.assigned + r.assigned,
+        anyStepComplete: acc.anyStepComplete + r.anyStepComplete,
+        journeyComplete: acc.journeyComplete + r.journeyComplete,
+        stepsByStudent: acc.stepsByStudent + r.stepsByStudent,
+        stepsByStaff: acc.stepsByStaff + r.stepsByStaff
+      }), { assigned: 0, anyStepComplete: 0, journeyComplete: 0, stepsByStudent: 0, stepsByStaff: 0 });
+
+      const totalRow = `
+        <tr class="total-row">
+          <td>Total</td>
+          <td class="num"><span class="ov-count">${totals.assigned}</span></td>
+          <td class="num">
+            <span class="ov-count">${totals.anyStepComplete}</span><span class="ov-pct">${pct(totals.anyStepComplete, totals.assigned)}</span>
+          </td>
+          <td class="num">
+            <span class="ov-count complete">${totals.journeyComplete}</span><span class="ov-pct">${pct(totals.journeyComplete, totals.assigned)}</span>
+          </td>
+          <td class="num"><span class="ov-count student">${totals.stepsByStudent}</span></td>
+          <td class="num"><span class="ov-count staff">${totals.stepsByStaff}</span></td>
+        </tr>`;
+
       overviewBlock.innerHTML = `
         <div class="overview-title">Overview — all journeys</div>
         <div class="overview-scroll">
@@ -727,13 +773,13 @@
               <tr>
                 <th>Journey</th>
                 <th class="num">Assigned</th>
-                <th class="num">At least 1 step complete</th>
-                <th class="num">Journey complete</th>
+                <th class="num">Students with at least 1 step complete</th>
+                <th class="num">Students with journey complete</th>
                 <th class="num">Steps completed by student</th>
                 <th class="num">Steps completed by staff</th>
               </tr>
             </thead>
-            <tbody>${bodyRows}</tbody>
+            <tbody>${bodyRows}${totalRow}</tbody>
           </table>
         </div>`;
 
