@@ -1,12 +1,18 @@
 <!--
 ================================================================================
   App:          LaGuardia Navigate Journeys Analyzer
-  Version:      1.7
+  Version:      1.8
   Released:     May 5, 2026
   Developed by: Josh Goldblatt using Claude
 ================================================================================
   CHANGELOG (most recent first)
 --------------------------------------------------------------------------------
+  v1.8  2026-05-05
+    - Widened the main page container from 860px to 1100px so the six-column
+      overview table fits without horizontal scrolling on typical laptop
+      screens. The "Steps completed by staff" column was getting clipped at
+      the old width. Horizontal-scroll fallback on the overview table stays
+      in place as a safety net for narrow windows.
   v1.7  2026-05-05
     - Added a Total row at the bottom of the overview table. Each numeric
       column sums down the rows; the two student-count columns also show a
@@ -49,7 +55,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LaGuardia Navigate Journeys Analyzer v1.7</title>
+<title>LaGuardia Navigate Journeys Analyzer v1.8</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -80,7 +86,7 @@
   }
 
   .page-wrap {
-    max-width: 860px;
+    max-width: 1100px;
     margin: 0 auto;
   }
 
@@ -486,7 +492,7 @@
     <h1>Navigate Journeys Analyzer App</h1>
     <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
     <div class="app-info">
-      <span>Version:</span> 1.7<br>
+      <span>Version:</span> 1.8<br>
       <span>Released:</span> May 5, 2026<br>
       <span>Developed by:</span> Josh Goldblatt using Claude
     </div>
