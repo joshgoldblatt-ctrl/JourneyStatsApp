@@ -1,12 +1,24 @@
 <!--
 ================================================================================
   App:          LaGuardia Navigate Journeys Analyzer
-  Version:      1.0
-  Released:     April 22, 2026
+  Version:      1.5
+  Released:     May 5, 2026
   Developed by: Josh Goldblatt using Claude
 ================================================================================
   CHANGELOG (most recent first)
 --------------------------------------------------------------------------------
+  v1.5  2026-05-05
+    - Added a multi-journey overview table that appears at the top of results
+      when the uploaded file contains more than one journey. One row per
+      journey, columns: Assigned / At least 1 step complete (count + %) /
+      Journey complete (count + %) / Steps completed by student / Steps
+      completed by staff. Single-journey files skip the overview since the
+      per-journey card below already shows everything.
+    - Renamed the visible H1 from "Navigate Journeys Analyzer" to "Navigate
+      Journeys Analyzer App" for consistency with other LaGuardia apps.
+    - Removed the "App:" line from the in-app header block (the metadata
+      comment block at the top of the file still has it). Header now shows
+      Version / Released / Developed by only.
   v1.0  2026-04-22
     - Initial release under app-development conventions.
     - Upload a Navigate Journeys report CSV via drag-and-drop or file picker.
@@ -21,7 +33,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LaGuardia Navigate Journeys Analyzer v1.0</title>
+<title>LaGuardia Navigate Journeys Analyzer v1.5</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -211,6 +223,80 @@
   .metric-value.complete { color: var(--teal); }
   .metric-pct.complete { color: var(--teal); }
 
+  .overview-block {
+    background: white;
+    border: 1px solid var(--gray-border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    overflow: hidden;
+  }
+
+  .overview-title {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 0.85rem;
+  }
+
+  .overview-scroll {
+    overflow-x: auto;
+  }
+
+  table.overview {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 13px;
+  }
+
+  table.overview th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--gray-border);
+    background: #FAFAF7;
+    white-space: nowrap;
+  }
+
+  table.overview th.num { text-align: right; }
+
+  table.overview td {
+    padding: 10px;
+    border-bottom: 1px solid var(--gray-border);
+    vertical-align: middle;
+  }
+
+  table.overview tr:last-child td { border-bottom: none; }
+
+  table.overview td.num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .ov-journey {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .ov-count {
+    color: var(--text);
+  }
+
+  .ov-pct {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-left: 4px;
+  }
+
+  .ov-count.complete { color: var(--teal); }
+  .ov-count.student { color: var(--teal); }
+  .ov-count.staff { color: var(--blue-dark); }
+
   .scorecard {
     display: flex;
     gap: 0;
@@ -374,12 +460,11 @@
 <div class="page-wrap">
 
   <header>
-    <h1>Navigate Journeys Analyzer</h1>
+    <h1>Navigate Journeys Analyzer App</h1>
     <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
     <div class="app-info">
-      <span>App:</span> LaGuardia Navigate Journeys Analyzer<br>
-      <span>Version:</span> 1.0<br>
-      <span>Released:</span> April 22, 2026<br>
+      <span>Version:</span> 1.5<br>
+      <span>Released:</span> May 5, 2026<br>
       <span>Developed by:</span> Josh Goldblatt using Claude
     </div>
   </header>
@@ -461,6 +546,8 @@
     const journeys = [...new Set(data.map(r => r['Journey Name']))].filter(Boolean).sort();
     const container = document.getElementById('stats-container');
     container.innerHTML = '';
+
+    const overviewRows = [];
 
     journeys.forEach(journey => {
       const rows = data.filter(r => r['Journey Name'] === journey);
@@ -600,8 +687,58 @@
           </table>
         </div>`;
 
+      overviewRows.push({
+        journey: journey,
+        assigned: assigned,
+        anyStepComplete: anyStepComplete,
+        journeyComplete: complete,
+        stepsByStudent: totalStepsByStudent,
+        stepsByStaff: totalStepsByStaff
+      });
+
       container.appendChild(block);
     });
+
+    // If there are multiple journeys, prepend an overview table at the top
+    if (overviewRows.length > 1) {
+      const overviewBlock = document.createElement('div');
+      overviewBlock.className = 'overview-block';
+
+      const bodyRows = overviewRows.map(r => `
+        <tr>
+          <td><span class="ov-journey">${r.journey}</span></td>
+          <td class="num"><span class="ov-count">${r.assigned}</span></td>
+          <td class="num">
+            <span class="ov-count">${r.anyStepComplete}</span><span class="ov-pct">${pct(r.anyStepComplete, r.assigned)}</span>
+          </td>
+          <td class="num">
+            <span class="ov-count complete">${r.journeyComplete}</span><span class="ov-pct">${pct(r.journeyComplete, r.assigned)}</span>
+          </td>
+          <td class="num"><span class="ov-count student">${r.stepsByStudent}</span></td>
+          <td class="num"><span class="ov-count staff">${r.stepsByStaff}</span></td>
+        </tr>
+      `).join('');
+
+      overviewBlock.innerHTML = `
+        <div class="overview-title">Overview — all journeys</div>
+        <div class="overview-scroll">
+          <table class="overview">
+            <thead>
+              <tr>
+                <th>Journey</th>
+                <th class="num">Assigned</th>
+                <th class="num">At least 1 step complete</th>
+                <th class="num">Journey complete</th>
+                <th class="num">Steps completed by student</th>
+                <th class="num">Steps completed by staff</th>
+              </tr>
+            </thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>`;
+
+      container.insertBefore(overviewBlock, container.firstChild);
+    }
 
     document.getElementById('results').style.display = 'block';
     document.getElementById('download-btn').style.display = 'inline-block';
