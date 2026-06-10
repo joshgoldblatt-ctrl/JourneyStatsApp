@@ -1,12 +1,50 @@
 <!--
 ================================================================================
   App:          LaGuardia Navigate Journeys Analyzer
-  Version:      1.8
-  Released:     May 5, 2026
+  Version:      2.0
+  Released:     June 10, 2026
   Developed by: Josh Goldblatt using Claude
 ================================================================================
   CHANGELOG (most recent first)
 --------------------------------------------------------------------------------
+  v2.0  2026-06-10
+    - Added a new metric: "Students with 3+ steps complete" — the count of
+      unique students who completed 3 or more DISTINCT steps within a journey
+      (completer-agnostic; any completed step counts regardless of who marked
+      it). Shown as count + % of assigned.
+    - Appears in both the overview table (new column, placed between "at least
+      1 step complete" and "journey complete") and the per-journey detail
+      cards (new 4th metric card in the same position).
+    - In the deduplicated grand total, this column counts unique students who
+      hit 3+ steps within a SINGLE journey in at least one journey — a student
+      with 2 steps in one journey and 2 in another does not qualify. This is
+      computed per (student, journey), then deduplicated by student.
+    - Journeys with fewer than 3 steps would always show 0 here, which is
+      accurate (left as 0 by design).
+  v1.9  2026-06-10
+    - Overview table now detects "universal" journeys — ones assigned to
+      essentially the same students as one another (e.g. Transfer & Career
+      Part I and II). Detection compares each journey's student-ID set against
+      every other journey's using Jaccard overlap; journeys with >= 0.85
+      overlap with at least one other are flagged as candidates.
+    - When universal journeys are detected, a confirmation panel appears above
+      the overview with the candidates pre-checked. The user can check/uncheck
+      to control the split; the overview re-renders instantly on change.
+    - When one or more journeys are treated as universal, the overview splits
+      into a "Major / Program Journeys" group (with subtotal) and a "Universal
+      Journeys" group (with subtotal), followed by a "Grand total — unique
+      students" row. The grand total deduplicates by Student ID across the
+      whole file, so students assigned to multiple journeys are no longer
+      double/triple-counted (this fixes the inflated Assigned total).
+    - If no overlap is detected (all-distinct journeys, whether all-major,
+      all-universal-but-unmatched, or a single journey), the overview shows the
+      original flat table with one totals row — no panel, no grouping labels.
+    - If every journey is confirmed universal, the Major section is omitted and
+      only the Universal section + grand total are shown.
+    - Note on columns: subtotals are row sums. In the grand total, the two
+      student-count columns are unique-student counts (students who did X in
+      ANY journey); the two step-count columns remain raw completed-step
+      events (correctly summed, not deduplicated).
   v1.8  2026-05-05
     - Widened the main page container from 860px to 1100px so the six-column
       overview table fits without horizontal scrolling on typical laptop
@@ -55,7 +93,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LaGuardia Navigate Journeys Analyzer v1.8</title>
+<title>LaGuardia Navigate Journeys Analyzer v2.0</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -326,6 +364,101 @@
   .ov-count.student { color: var(--teal); }
   .ov-count.staff { color: var(--blue-dark); }
 
+  /* Section header row inside the overview table (Major / Universal groups) */
+  table.overview tr.section-row td {
+    background: #EFF4FA;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--blue-dark);
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--gray-border);
+  }
+
+  /* Subtotal row for a group (lighter than the grand total) */
+  table.overview tr.subtotal-row td {
+    background: #FBFAF7;
+    font-weight: 600;
+    font-style: italic;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--gray-border);
+  }
+  table.overview tr.subtotal-row td .ov-count { color: var(--text-secondary); }
+
+  /* Grand total row — unique students, deduplicated */
+  table.overview tr.grand-total-row td {
+    background: #F0EFEA;
+    font-weight: 700;
+    border-top: 2px solid var(--blue-dark);
+    border-bottom: none;
+  }
+
+  .grand-total-note {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-top: 0.75rem;
+    padding-left: 2px;
+  }
+
+  /* Universal-journey confirmation panel */
+  .universal-panel {
+    background: var(--gray-bg);
+    border: 1px solid var(--gray-border);
+    border-left: 3px solid var(--blue-mid);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.15rem;
+    margin-bottom: 1.5rem;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+  }
+
+  .universal-panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--blue-dark);
+    margin-bottom: 0.4rem;
+  }
+
+  .universal-panel-desc {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin-bottom: 0.85rem;
+  }
+
+  .universal-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .universal-option {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .universal-option input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--blue-dark);
+    cursor: pointer;
+  }
+
+  .universal-option .opt-meta {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
   .scorecard {
     display: flex;
     gap: 0;
@@ -492,8 +625,8 @@
     <h1>Navigate Journeys Analyzer App</h1>
     <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
     <div class="app-info">
-      <span>Version:</span> 1.8<br>
-      <span>Released:</span> May 5, 2026<br>
+      <span>Version:</span> 2.0<br>
+      <span>Released:</span> June 10, 2026<br>
       <span>Developed by:</span> Josh Goldblatt using Claude
     </div>
   </header>
@@ -604,6 +737,21 @@
       });
       const anyStepComplete = studentsWithAnyComplete.size;
 
+      // Count students who completed 3 or more DISTINCT steps within this journey
+      // (completer-agnostic — any completed step counts, regardless of who marked it).
+      const completedStepsByStudent = {};
+      rows.forEach(r => {
+        if ((r['Journey Step Status'] || '').trim().toLowerCase() === 'complete') {
+          const id = r['Student ID'];
+          const stepName = r['Journey Step Name'];
+          if (!id || !stepName) return;
+          if (!completedStepsByStudent[id]) completedStepsByStudent[id] = new Set();
+          completedStepsByStudent[id].add(stepName);
+        }
+      });
+      const threePlusSteps = Object.values(completedStepsByStudent)
+        .filter(set => set.size >= 3).length;
+
       // Journey-level step completion scorecard
       let totalStepsCompleted = 0;
       let totalStepsByStudent = 0;
@@ -679,6 +827,11 @@
             <div class="metric-pct">${pct(anyStepComplete, assigned)} of assigned</div>
           </div>
           <div class="metric-card">
+            <div class="metric-label">Students with 3+ steps complete</div>
+            <div class="metric-value">${threePlusSteps}</div>
+            <div class="metric-pct">${pct(threePlusSteps, assigned)} of assigned</div>
+          </div>
+          <div class="metric-card">
             <div class="metric-label">Students with journey complete</div>
             <div class="metric-value complete">${complete}</div>
             <div class="metric-pct complete">${pct(complete, assigned)} of assigned</div>
@@ -720,80 +873,253 @@
         journey: journey,
         assigned: assigned,
         anyStepComplete: anyStepComplete,
+        threePlusSteps: threePlusSteps,
         journeyComplete: complete,
         stepsByStudent: totalStepsByStudent,
-        stepsByStaff: totalStepsByStaff
+        stepsByStaff: totalStepsByStaff,
+        studentIds: new Set(Object.keys(studentMap))
       });
 
       container.appendChild(block);
     });
 
-    // If there are multiple journeys, prepend an overview table at the top
+    // Stash for the overview renderer (re-runs when the user toggles universal journeys)
+    window._overviewRows = overviewRows;
+    window._overviewData = data;
+
     if (overviewRows.length > 1) {
+      // Detect candidate universal journeys: a journey whose student set is
+      // nearly identical (Jaccard >= 0.85) to at least one other journey's set.
+      const JACCARD_THRESHOLD = 0.85;
+      const candidates = new Set();
+      for (let i = 0; i < overviewRows.length; i++) {
+        for (let j = i + 1; j < overviewRows.length; j++) {
+          const a = overviewRows[i].studentIds;
+          const b = overviewRows[j].studentIds;
+          let inter = 0;
+          a.forEach(id => { if (b.has(id)) inter++; });
+          const union = a.size + b.size - inter;
+          const jacc = union ? inter / union : 0;
+          if (jacc >= JACCARD_THRESHOLD) {
+            candidates.add(overviewRows[i].journey);
+            candidates.add(overviewRows[j].journey);
+          }
+        }
+      }
+
+      // Default universal selection = detected candidates (pre-checked)
+      window._universalSelection = new Set(candidates);
+
       const overviewBlock = document.createElement('div');
       overviewBlock.className = 'overview-block';
-
-      const bodyRows = overviewRows.map(r => `
-        <tr>
-          <td><span class="ov-journey">${r.journey}</span></td>
-          <td class="num"><span class="ov-count">${r.assigned}</span></td>
-          <td class="num">
-            <span class="ov-count">${r.anyStepComplete}</span><span class="ov-pct">${pct(r.anyStepComplete, r.assigned)}</span>
-          </td>
-          <td class="num">
-            <span class="ov-count complete">${r.journeyComplete}</span><span class="ov-pct">${pct(r.journeyComplete, r.assigned)}</span>
-          </td>
-          <td class="num"><span class="ov-count student">${r.stepsByStudent}</span></td>
-          <td class="num"><span class="ov-count staff">${r.stepsByStaff}</span></td>
-        </tr>
-      `).join('');
-
-      // Column totals (sums across journeys; same student counted once per journey)
-      const totals = overviewRows.reduce((acc, r) => ({
-        assigned: acc.assigned + r.assigned,
-        anyStepComplete: acc.anyStepComplete + r.anyStepComplete,
-        journeyComplete: acc.journeyComplete + r.journeyComplete,
-        stepsByStudent: acc.stepsByStudent + r.stepsByStudent,
-        stepsByStaff: acc.stepsByStaff + r.stepsByStaff
-      }), { assigned: 0, anyStepComplete: 0, journeyComplete: 0, stepsByStudent: 0, stepsByStaff: 0 });
-
-      const totalRow = `
-        <tr class="total-row">
-          <td>Total</td>
-          <td class="num"><span class="ov-count">${totals.assigned}</span></td>
-          <td class="num">
-            <span class="ov-count">${totals.anyStepComplete}</span><span class="ov-pct">${pct(totals.anyStepComplete, totals.assigned)}</span>
-          </td>
-          <td class="num">
-            <span class="ov-count complete">${totals.journeyComplete}</span><span class="ov-pct">${pct(totals.journeyComplete, totals.assigned)}</span>
-          </td>
-          <td class="num"><span class="ov-count student">${totals.stepsByStudent}</span></td>
-          <td class="num"><span class="ov-count staff">${totals.stepsByStaff}</span></td>
-        </tr>`;
-
-      overviewBlock.innerHTML = `
-        <div class="overview-title">Overview — all journeys</div>
-        <div class="overview-scroll">
-          <table class="overview">
-            <thead>
-              <tr>
-                <th>Journey</th>
-                <th class="num">Assigned</th>
-                <th class="num">Students with at least 1 step complete</th>
-                <th class="num">Students with journey complete</th>
-                <th class="num">Steps completed by student</th>
-                <th class="num">Steps completed by staff</th>
-              </tr>
-            </thead>
-            <tbody>${bodyRows}${totalRow}</tbody>
-          </table>
-        </div>`;
-
+      overviewBlock.id = 'overview-block';
       container.insertBefore(overviewBlock, container.firstChild);
+
+      // Confirmation panel (only when candidates exist)
+      if (candidates.size > 0) {
+        const panel = document.createElement('div');
+        panel.className = 'universal-panel';
+        const optionsHTML = [...candidates].sort().map(j => {
+          const row = overviewRows.find(r => r.journey === j);
+          return `
+            <label class="universal-option">
+              <input type="checkbox" checked onchange="toggleUniversal('${j.replace(/'/g, "\\'")}', this.checked)">
+              <span>${j} <span class="opt-meta">(${row.assigned} students)</span></span>
+            </label>`;
+        }).join('');
+        panel.innerHTML = `
+          <div class="universal-panel-title">Universal journeys detected</div>
+          <div class="universal-panel-desc">
+            These journeys share nearly the same students as one another, which usually means
+            they're assigned to everyone (e.g. Transfer &amp; Career). They've been split out below
+            so the grand total counts each student once instead of multiple times. Uncheck any that
+            shouldn't be treated as universal.
+          </div>
+          <div class="universal-options">${optionsHTML}</div>`;
+        container.insertBefore(panel, overviewBlock);
+      }
+
+      renderOverview();
     }
 
     document.getElementById('results').style.display = 'block';
     document.getElementById('download-btn').style.display = 'inline-block';
+  }
+
+  // Called when a universal-journey checkbox is toggled
+  function toggleUniversal(journey, checked) {
+    if (!window._universalSelection) window._universalSelection = new Set();
+    if (checked) window._universalSelection.add(journey);
+    else window._universalSelection.delete(journey);
+    renderOverview();
+  }
+
+  // Builds one overview <tr> for a journey stat object
+  function overviewRowHTML(r) {
+    return `
+      <tr>
+        <td><span class="ov-journey">${r.journey}</span></td>
+        <td class="num"><span class="ov-count">${r.assigned}</span></td>
+        <td class="num">
+          <span class="ov-count">${r.anyStepComplete}</span><span class="ov-pct">${pct(r.anyStepComplete, r.assigned)}</span>
+        </td>
+        <td class="num">
+          <span class="ov-count">${r.threePlusSteps}</span><span class="ov-pct">${pct(r.threePlusSteps, r.assigned)}</span>
+        </td>
+        <td class="num">
+          <span class="ov-count complete">${r.journeyComplete}</span><span class="ov-pct">${pct(r.journeyComplete, r.assigned)}</span>
+        </td>
+        <td class="num"><span class="ov-count student">${r.stepsByStudent}</span></td>
+        <td class="num"><span class="ov-count staff">${r.stepsByStaff}</span></td>
+      </tr>`;
+  }
+
+  // Sums a set of overview rows into a totals object
+  function sumRows(rows) {
+    return rows.reduce((acc, r) => ({
+      assigned: acc.assigned + r.assigned,
+      anyStepComplete: acc.anyStepComplete + r.anyStepComplete,
+      threePlusSteps: acc.threePlusSteps + r.threePlusSteps,
+      journeyComplete: acc.journeyComplete + r.journeyComplete,
+      stepsByStudent: acc.stepsByStudent + r.stepsByStudent,
+      stepsByStaff: acc.stepsByStaff + r.stepsByStaff
+    }), { assigned: 0, anyStepComplete: 0, threePlusSteps: 0, journeyComplete: 0, stepsByStudent: 0, stepsByStaff: 0 });
+  }
+
+  // Builds a totals-style <tr> (subtotal / total / grand-total)
+  function totalsRowHTML(label, t, rowClass) {
+    return `
+      <tr class="${rowClass}">
+        <td>${label}</td>
+        <td class="num"><span class="ov-count">${t.assigned}</span></td>
+        <td class="num">
+          <span class="ov-count">${t.anyStepComplete}</span><span class="ov-pct">${pct(t.anyStepComplete, t.assigned)}</span>
+        </td>
+        <td class="num">
+          <span class="ov-count">${t.threePlusSteps}</span><span class="ov-pct">${pct(t.threePlusSteps, t.assigned)}</span>
+        </td>
+        <td class="num">
+          <span class="ov-count complete">${t.journeyComplete}</span><span class="ov-pct">${pct(t.journeyComplete, t.assigned)}</span>
+        </td>
+        <td class="num"><span class="ov-count student">${t.stepsByStudent}</span></td>
+        <td class="num"><span class="ov-count staff">${t.stepsByStaff}</span></td>
+      </tr>`;
+  }
+
+  // Computes a true unique-student grand total from the raw data (dedup by Student ID).
+  // Assigned = unique students in the whole file.
+  // anyStepComplete = unique students with >=1 completed step in ANY journey.
+  // journeyComplete = unique students with >=1 journey marked Complete.
+  // Step counts = raw completed-step events across the whole file.
+  function computeUniqueGrandTotal(data) {
+    const assignedSet = new Set();
+    const anyStepSet = new Set();
+    const journeyCompleteSet = new Set();
+    let stepsByStudent = 0, stepsByStaff = 0;
+    // Track completed distinct steps per (student, journey) so we can find
+    // students who hit 3+ steps WITHIN a single journey.
+    const stepsPerStudentJourney = {};
+    data.forEach(r => {
+      const id = r['Student ID'];
+      if (!id) return;
+      assignedSet.add(id);
+      const stepStatus = (r['Journey Step Status'] || '').trim().toLowerCase();
+      if (stepStatus === 'complete') {
+        anyStepSet.add(id);
+        const journey = r['Journey Name'];
+        const stepName = r['Journey Step Name'];
+        if (journey && stepName) {
+          const key = id + '||' + journey;
+          if (!stepsPerStudentJourney[key]) stepsPerStudentJourney[key] = new Set();
+          stepsPerStudentJourney[key].add(stepName);
+        }
+        const completedBy = (r['Journey Step Status Completed By Name'] || '').trim().toLowerCase();
+        const studentName = (r['Student Name'] || '').trim().toLowerCase();
+        if (completedBy && studentName && completedBy === studentName) stepsByStudent++;
+        else if (completedBy) stepsByStaff++;
+      }
+      if ((r['Journey Status'] || '').trim().toLowerCase() === 'complete') {
+        journeyCompleteSet.add(id);
+      }
+    });
+    // Unique students with 3+ completed steps in at least one journey
+    const threePlusSet = new Set();
+    Object.entries(stepsPerStudentJourney).forEach(([key, set]) => {
+      if (set.size >= 3) threePlusSet.add(key.split('||')[0]);
+    });
+    return {
+      assigned: assignedSet.size,
+      anyStepComplete: anyStepSet.size,
+      threePlusSteps: threePlusSet.size,
+      journeyComplete: journeyCompleteSet.size,
+      stepsByStudent: stepsByStudent,
+      stepsByStaff: stepsByStaff
+    };
+  }
+
+  // Renders (or re-renders) the overview table based on the current universal selection
+  function renderOverview() {
+    const rows = window._overviewRows || [];
+    const data = window._overviewData || [];
+    const block = document.getElementById('overview-block');
+    if (!block) return;
+
+    const universal = window._universalSelection || new Set();
+    const majorRows = rows.filter(r => !universal.has(r.journey));
+    const universalRows = rows.filter(r => universal.has(r.journey));
+
+    const header = `
+      <thead>
+        <tr>
+          <th>Journey</th>
+          <th class="num">Assigned</th>
+          <th class="num">Students with at least 1 step complete</th>
+          <th class="num">Students with 3+ steps complete</th>
+          <th class="num">Students with journey complete</th>
+          <th class="num">Steps completed by student</th>
+          <th class="num">Steps completed by staff</th>
+        </tr>
+      </thead>`;
+
+    let bodyHTML = '';
+    let note = '';
+
+    if (universalRows.length === 0) {
+      // No universal journeys — single flat table with one totals row (original behavior)
+      bodyHTML = rows.map(overviewRowHTML).join('')
+        + totalsRowHTML('Total', sumRows(rows), 'total-row');
+    } else {
+      // Grouped layout: Major/Program section + subtotal, Universal section + subtotal,
+      // then a deduplicated unique-student grand total.
+      if (majorRows.length > 0) {
+        bodyHTML += `<tr class="section-row"><td colspan="7">Major / Program Journeys</td></tr>`;
+        bodyHTML += majorRows.map(overviewRowHTML).join('');
+        bodyHTML += totalsRowHTML('Subtotal — major / program', sumRows(majorRows), 'subtotal-row');
+      }
+      bodyHTML += `<tr class="section-row"><td colspan="7">Universal Journeys</td></tr>`;
+      bodyHTML += universalRows.map(overviewRowHTML).join('');
+      bodyHTML += totalsRowHTML('Subtotal — universal', sumRows(universalRows), 'subtotal-row');
+
+      const grand = computeUniqueGrandTotal(data);
+      bodyHTML += totalsRowHTML('Grand total — unique students', grand, 'grand-total-row');
+
+      note = `
+        <div class="grand-total-note">
+          Subtotals above are sums of their rows. The grand total counts each student only once
+          across the whole file (deduplicated by Student ID), so students assigned to multiple
+          journeys aren't double-counted. For the completion columns, the grand total means unique
+          students who did that in <em>any</em> journey; the step columns are raw completed-step counts.
+        </div>`;
+    }
+
+    block.innerHTML = `
+      <div class="overview-title">Overview${universalRows.length ? ' — grouped by journey type' : ' — all journeys'}</div>
+      <div class="overview-scroll">
+        <table class="overview">
+          ${header}
+          <tbody>${bodyHTML}</tbody>
+        </table>
+      </div>${note}`;
   }
 
   function downloadFlat() {
