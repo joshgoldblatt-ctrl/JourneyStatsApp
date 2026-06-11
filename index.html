@@ -1,12 +1,25 @@
 <!--
 ================================================================================
   App:          LaGuardia Navigate Journeys Analyzer
-  Version:      2.0
+  Version:      2.1
   Released:     June 10, 2026
   Developed by: Josh Goldblatt using Claude
 ================================================================================
   CHANGELOG (most recent first)
 --------------------------------------------------------------------------------
+  v2.1  2026-06-10
+    - Added a "Save as PDF" button next to "Download flat file". It opens the
+      browser's print dialog; the user chooses "Save as PDF" as the
+      destination. No new libraries/dependencies — uses the browser's built-in
+      print-to-PDF so the app stays a self-contained single file.
+    - Added print-specific CSS so the PDF is a clean analysis report: the drop
+      zone, buttons, and the universal-journey checkboxes are hidden; the app
+      header (title + version) is kept so the printout is self-identifying;
+      shadows are flattened; journey blocks avoid breaking across pages.
+    - Print uses landscape orientation so all 7 overview columns fit without
+      clipping (portrait was cutting off the right-most step columns).
+    - Both buttons now sit in a shared "action bar" that appears together once
+      a file is loaded.
   v2.0  2026-06-10
     - Added a new metric: "Students with 3+ steps complete" — the count of
       unique students who completed 3 or more DISTINCT steps within a journey
@@ -93,7 +106,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LaGuardia Navigate Journeys Analyzer v2.0</title>
+<title>LaGuardia Navigate Journeys Analyzer v2.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -587,23 +600,41 @@
 
   .self-zero { color: #C0BDB4; font-size: 13px; }
 
-  #download-btn {
-    display: none;
+  .action-bar {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+  }
+
+  #download-btn, #pdf-btn {
     padding: 10px 22px;
     font-family: 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 14px;
     font-weight: 500;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    letter-spacing: 0.01em;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  #download-btn {
     background: var(--blue);
     color: white;
     border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    margin-bottom: 2rem;
-    letter-spacing: 0.01em;
-    transition: background 0.15s;
   }
-
   #download-btn:hover { background: var(--blue-dark); }
+
+  #pdf-btn {
+    background: white;
+    color: var(--blue-dark);
+    border: 1px solid var(--blue-mid);
+  }
+  #pdf-btn:hover {
+    background: var(--blue-dark);
+    border-color: var(--blue-dark);
+    color: white;
+  }
 
   .error-msg {
     font-family: 'Helvetica Neue', Helvetica, sans-serif;
@@ -616,6 +647,69 @@
     margin-bottom: 1rem;
     display: none;
   }
+  /* ---- Print / Save-as-PDF styles ---- */
+  @media print {
+    @page {
+      size: landscape;
+      margin: 0.5in;
+    }
+    body {
+      background: white !important;
+      font-size: 11px;
+    }
+    .page-wrap {
+      max-width: 100% !important;
+    }
+    /* Hide interactive chrome that has no meaning on paper */
+    #drop-zone,
+    .action-bar,
+    #file-name,
+    .error-msg {
+      display: none !important;
+    }
+    /* Hide the universal panel's checkboxes; keep its explanatory text */
+    .universal-panel .universal-options {
+      display: none !important;
+    }
+    .universal-panel {
+      border-left-color: #999 !important;
+    }
+    /* Keep the app header (title + version) so the printout is self-identifying */
+    header {
+      border-bottom: 1px solid #ccc;
+    }
+    /* Flatten shadows/heavy fills to save ink and avoid render glitches */
+    .journey-block,
+    .overview-block {
+      box-shadow: none !important;
+      border: 1px solid #ccc !important;
+    }
+    /* Keep each journey block intact on one page where possible */
+    .journey-block {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    /* The overview can break across pages if it's long, but keep rows intact */
+    table.overview tr,
+    table.steps tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    /* Tables render full width without horizontal scroll on paper */
+    .overview-scroll {
+      overflow-x: visible !important;
+    }
+    table.overview {
+      width: 100% !important;
+      table-layout: auto;
+    }
+    /* Tighten the overview so all 7 columns fit landscape width comfortably */
+    table.overview th,
+    table.overview td {
+      padding: 5px 7px;
+      font-size: 10px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -625,7 +719,7 @@
     <h1>Navigate Journeys Analyzer App</h1>
     <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
     <div class="app-info">
-      <span>Version:</span> 2.0<br>
+      <span>Version:</span> 2.1<br>
       <span>Released:</span> June 10, 2026<br>
       <span>Developed by:</span> Josh Goldblatt using Claude
     </div>
@@ -645,7 +739,10 @@
   <div class="error-msg" id="error-msg"></div>
 
   <div id="results">
-    <button id="download-btn" onclick="downloadFlat()">&#8595; Download flat file</button>
+    <div class="action-bar" id="action-bar" style="display:none;">
+      <button id="download-btn" onclick="downloadFlat()">&#8595; Download flat file</button>
+      <button id="pdf-btn" onclick="printReport()">&#128424; Save as PDF</button>
+    </div>
     <div id="stats-container"></div>
   </div>
 
@@ -943,7 +1040,7 @@
     }
 
     document.getElementById('results').style.display = 'block';
-    document.getElementById('download-btn').style.display = 'inline-block';
+    document.getElementById('action-bar').style.display = 'flex';
   }
 
   // Called when a universal-journey checkbox is toggled
@@ -1120,6 +1217,10 @@
           <tbody>${bodyHTML}</tbody>
         </table>
       </div>${note}`;
+  }
+
+  function printReport() {
+    window.print();
   }
 
   function downloadFlat() {
