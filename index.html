@@ -1,12 +1,16 @@
 <!--
 ================================================================================
   App:          LaGuardia Navigate Journeys Analyzer
-  Version:      2.1
+  Version:      2.2
   Released:     June 10, 2026
   Developed by: Josh Goldblatt using Claude
 ================================================================================
   CHANGELOG (most recent first)
 --------------------------------------------------------------------------------
+  v2.2  2026-06-10
+    - PDF output now starts directly with the overview table. The app header
+      (title, subtitle, version box) and the "Universal journeys detected"
+      panel are hidden in print only — both remain visible on screen.
   v2.1  2026-06-10
     - Added a "Save as PDF" button next to "Download flat file". It opens the
       browser's print dialog; the user chooses "Save as PDF" as the
@@ -106,7 +110,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LaGuardia Navigate Journeys Analyzer v2.1</title>
+<title>LaGuardia Navigate Journeys Analyzer v2.2</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root {
@@ -664,19 +668,10 @@
     #drop-zone,
     .action-bar,
     #file-name,
-    .error-msg {
-      display: none !important;
-    }
-    /* Hide the universal panel's checkboxes; keep its explanatory text */
-    .universal-panel .universal-options {
-      display: none !important;
-    }
+    .error-msg,
+    header,
     .universal-panel {
-      border-left-color: #999 !important;
-    }
-    /* Keep the app header (title + version) so the printout is self-identifying */
-    header {
-      border-bottom: 1px solid #ccc;
+      display: none !important;
     }
     /* Flatten shadows/heavy fills to save ink and avoid render glitches */
     .journey-block,
@@ -719,7 +714,7 @@
     <h1>Navigate Journeys Analyzer App</h1>
     <p>Upload a Journeys report CSV to view stats and download a flattened file.</p>
     <div class="app-info">
-      <span>Version:</span> 2.1<br>
+      <span>Version:</span> 2.2<br>
       <span>Released:</span> June 10, 2026<br>
       <span>Developed by:</span> Josh Goldblatt using Claude
     </div>
